@@ -1,0 +1,20 @@
+# Environment Variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+venv/
+env/
+.venv/
+
+# Downloaded Datasets and Images
+ready_to_upload/
+*.zip
+*.tar.gz
+*.jpg
+*.jpeg
+*.png
