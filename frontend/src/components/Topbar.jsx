@@ -1,5 +1,4 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Search, User } from 'lucide-react';
 import clsx from 'clsx';
 
 const Topbar = () => {
@@ -9,6 +8,7 @@ const Topbar = () => {
     { name: 'Home', path: '/' },
     { name: 'Analyze', path: '/upload' },
     { name: 'History', path: '/history' },
+    { name: 'Help', path: '/help' },
   ];
 
   return (
@@ -34,15 +34,6 @@ const Topbar = () => {
             );
           })}
         </nav>
-      </div>
-
-      <div className="flex items-center space-x-6">
-        <button className="text-gray-300 hover:text-white transition-colors">
-          <Search className="w-5 h-5" />
-        </button>
-        <button className="w-8 h-8 rounded-full bg-[#1b3b2b] flex items-center justify-center overflow-hidden border border-[#3fe29f]/50">
-          <User className="w-5 h-5 text-[#3fe29f]" />
-        </button>
       </div>
     </header>
   );

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import ImageUploader from '../components/ImageUploader';
 import { useAppContext } from '../context/AppContext';
 import { Activity, Target } from 'lucide-react';
@@ -17,7 +18,13 @@ const Upload = () => {
   const [preview, setPreview] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const navigate = useNavigate();
-  const { setCurrentResult, addResultToHistory } = useAppContext();
+  const { setCurrentResult, addResultToHistory, history } = useAppContext();
+
+  // Stats derived from real history
+  const totalScans = history.length;
+  const diseasedCount = history.filter(h => h.status === 'DISEASED').length;
+  const detectionRate = totalScans > 0 ? Math.round((diseasedCount / totalScans) * 100) : null;
+  const lastConfidence = history.length > 0 ? history[0].confidence : null;
 
   const handleFileSelect = (selectedFile) => {
     setFile(selectedFile);
@@ -29,36 +36,51 @@ const Upload = () => {
     setIsUploading(true);
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
       
-      const isHealthy = Math.random() > 0.4;
-      const mockResult = {
-        id: Date.now().toString(),
-        date: new Date().toISOString(),
-        imageUrl: preview,
-        status: isHealthy ? 'HEALTHY' : 'DISEASED',
-        diseaseName: isHealthy ? 'Tomato Crop - West Block' : 'Cucumber Vineyard - South Row 4',
-        details: isHealthy 
-          ? 'Confidence Score: 98.4%. No signs of fungal infection or pest damage detected. Leaf turgor and pigmentation optimal for current growth stage.'
-          : 'Detected: Downy Mildew (Pseudoperonospora cubensis). Recommend immediate localized fungicide treatment and humidity control adjustments.',
-        confidence: Math.floor(Math.random() * 10) + 90,
-        metrics: {
-          moisture: isHealthy ? '82%' : '64%',
-          chlorophyll: isHealthy ? '0.88' : '0.42',
-          solar: isHealthy ? '94%' : '72%',
-          transpiration: isHealthy ? 'Optimal' : 'Stressed'
+      const response = await axios.post(`${API_URL}/api/predict`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
         },
+      });
+
+      const data = response.data;
+      
+      let topPrediction = null;
+      if (data.predictions && data.predictions.length > 0) {
+        topPrediction = [...data.predictions].sort((a, b) => b.probability - a.probability)[0];
+      }
+
+      const diseaseName = topPrediction ? topPrediction.tagName : 'Unknown';
+      const isHealthy = diseaseName.toLowerCase().includes('healthy') || diseaseName.toLowerCase().includes('normal');
+      const confidence = topPrediction ? Math.round(topPrediction.probability * 100) : 0;
+      
+      const result = {
+        id: data.dbId || data.id || Date.now().toString(),
+        date: new Date().toISOString(),
+        imageUrl: data.imageUrl || preview,
+        status: isHealthy ? 'HEALTHY' : 'DISEASED',
+        diseaseName: diseaseName,
+        allPredictions: data.predictions || [],
+        details: isHealthy 
+          ? `Confidence: ${confidence}%. The AI found no disease markers in this image. The crop appears healthy.`
+          : `Detected: ${diseaseName} with ${confidence}% confidence. Immediate assessment is recommended.`,
+        confidence: confidence,
         advice: isHealthy 
-          ? 'Crops are showing peak vitality. We recommend maintaining the current fertigation schedule. Monitor for aphids as seasonal temperatures rise.'
-          : 'Urgent: Fungal pathogens detected. Isolate affected zone 4. Apply systemic fungicide within 24 hours. Reduce overnight humidity to below 60%.'
+          ? 'Crops are showing no signs of disease. Maintain current care schedule and monitor regularly.'
+          : `Urgent: ${diseaseName} detected. Isolate the affected zone and consult an agronomist within 24 hours.`
       };
 
-      setCurrentResult(mockResult);
-      addResultToHistory(mockResult);
+      setCurrentResult(result);
+      addResultToHistory(result);
       navigate('/result');
 
     } catch (err) {
       console.error(err);
+      alert('Error analyzing crop: ' + (err.response?.data?.error || err.message));
     } finally {
       setIsUploading(false);
     }
@@ -110,21 +132,27 @@ const Upload = () => {
             <div>
               <div className="flex items-center space-x-2 mb-4">
                 <Activity className="w-5 h-5 text-[#3fe29f]" />
-                <h3 className="font-bold text-lg">Health Engine v4.2</h3>
+                <h3 className="font-bold text-lg">Azure Custom Vision</h3>
               </div>
               <p className="text-[#8cae9e] text-xs leading-relaxed mb-6">
-                Analysis includes leaf surface mapping, soil moisture estimation, and chlorophyll density mapping.
+                Powered by your trained Azure Custom Vision model. Upload a crop image to get an instant disease classification with confidence scores.
               </p>
               
-              <div className="mb-6">
-                <div className="flex justify-between text-xs font-bold mb-2">
-                  <span>Optimization</span>
-                  <span className="text-[#3fe29f]">88%</span>
+              {lastConfidence !== null ? (
+                <div className="mb-6">
+                  <div className="flex justify-between text-xs font-bold mb-2">
+                    <span>Last Analysis Confidence</span>
+                    <span className="text-[#3fe29f]">{lastConfidence}%</span>
+                  </div>
+                  <div className="h-1.5 bg-[#1b3b2b] rounded-full overflow-hidden">
+                    <div className="h-full bg-[#3fe29f] rounded-full transition-all duration-700" style={{ width: `${lastConfidence}%` }}></div>
+                  </div>
                 </div>
-                <div className="h-1.5 bg-[#1b3b2b] rounded-full overflow-hidden">
-                  <div className="h-full bg-[#3fe29f] w-[88%] rounded-full"></div>
+              ) : (
+                <div className="mb-6 p-3 bg-[#1b3b2b] rounded-xl">
+                  <p className="text-[#8cae9e] text-xs">No scans yet — upload your first crop image to begin.</p>
                 </div>
-              </div>
+              )}
             </div>
 
             <button
@@ -141,10 +169,26 @@ const Upload = () => {
 
       {/* Bottom Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-        <StatCard title="Analysis History" value="1,284" subtitle="↑ 12% this month" />
-        <StatCard title="Detection Rate" value="99.8%" subtitle="Enterprise Precision" />
-        <StatCard title="Processing Time" value="< 1.2s" subtitle="Real-time edge computing" />
-        <StatCard title="Active Sensors" value="42" subtitle="Syncing via Satellite" />
+        <StatCard
+          title="Total Scans"
+          value={totalScans > 0 ? totalScans.toLocaleString() : '—'}
+          subtitle={totalScans > 0 ? `${diseasedCount} disease${diseasedCount !== 1 ? 's' : ''} detected` : 'No scans yet'}
+        />
+        <StatCard
+          title="Disease Rate"
+          value={detectionRate !== null ? `${detectionRate}%` : '—'}
+          subtitle={totalScans > 0 ? `Across ${totalScans} scan${totalScans !== 1 ? 's' : ''}` : 'Upload to begin'}
+        />
+        <StatCard
+          title="Last Confidence"
+          value={lastConfidence !== null ? `${lastConfidence}%` : '—'}
+          subtitle={lastConfidence !== null ? 'Most recent scan' : 'No data yet'}
+        />
+        <StatCard
+          title="Healthy Crops"
+          value={totalScans > 0 ? (totalScans - diseasedCount).toString() : '—'}
+          subtitle={totalScans > 0 ? `${totalScans - diseasedCount} of ${totalScans} scans` : 'No scans yet'}
+        />
       </div>
     </div>
   );

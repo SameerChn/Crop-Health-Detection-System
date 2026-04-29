@@ -63,12 +63,19 @@ const History = () => {
             <div key={item.id} className="bg-white rounded-[2rem] shadow-sm border border-[#e2ece6] flex items-center p-3 relative group hover:shadow-md transition-shadow">
 
               {/* Image */}
-              <div className="w-64 h-36 bg-black rounded-3xl overflow-hidden flex-shrink-0">
-                <img
-                  src={item.imageUrl}
-                  alt={item.diseaseName}
-                  className="w-full h-full object-cover"
-                />
+              <div className="w-64 h-36 bg-[#0e4e37] rounded-3xl overflow-hidden flex-shrink-0">
+                {item.imageUrl ? (
+                  <img
+                    src={item.imageUrl}
+                    alt={item.diseaseName}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-1 opacity-40">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    <span className="text-white text-[10px] font-bold">No Image</span>
+                  </div>
+                )}
               </div>
 
               {/* Content */}
@@ -105,7 +112,19 @@ const History = () => {
                 >
                   <Eye className="w-5 h-5" />
                 </button>
-                <button className="w-10 h-10 rounded-full bg-[#f4f9f6] flex items-center justify-center text-[#0e4e37] hover:bg-[#e4f0e9] transition-colors border border-[#e2ece6]">
+                <button 
+                  onClick={() => {
+                    const text = `Crop Health Report\nGenerated ID: #${item.id.slice(-6)}\nDate: ${new Date(item.date).toLocaleString()}\n\nStatus: ${item.status}\nDisease: ${item.diseaseName}\nConfidence: ${item.confidence}%\n\nAdvice: ${item.advice || item.recommendation || ''}\n\nMetrics:\nMoisture: ${item.metrics?.moisture}\nChlorophyll: ${item.metrics?.chlorophyll}\nSolar: ${item.metrics?.solar}\nTranspiration: ${item.metrics?.transpiration}`;
+                    const blob = new Blob([text], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `Crop_Report_${item.id.slice(-6)}.txt`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="w-10 h-10 rounded-full bg-[#f4f9f6] flex items-center justify-center text-[#0e4e37] hover:bg-[#e4f0e9] transition-colors border border-[#e2ece6]"
+                >
                   <Download className="w-5 h-5" />
                 </button>
               </div>
