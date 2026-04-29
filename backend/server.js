@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
 const axios = require('axios');
-const { CosmosClient } = require('@azure/cosmos');
+const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') }); // Load from root .env
 
@@ -16,39 +16,49 @@ app.use(express.json());
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-// Azure Cosmos DB Setup Placeholder
-// You can grab these values once you finish logging in to Azure CosmosDB
-const cosmosEndpoint = process.env.COSMOS_ENDPOINT;
-const cosmosKey = process.env.COSMOS_KEY;
+// MongoDB / Cosmos DB for MongoDB Setup
+// Using the endpoint from .env
+const mongoURI = process.env.COSMOS_ENDPOINT || process.env.MONGO_URI;
 
-let cosmosContainer;
+let PredictionModel;
 
-async function initCosmos() {
-    if (cosmosEndpoint && cosmosKey) {
+async function initDB() {
+    if (mongoURI) {
         try {
-            const client = new CosmosClient({ endpoint: cosmosEndpoint, key: cosmosKey });
+            let finalURI = mongoURI;
+            // Fix unescaped @ in password
+            const match = finalURI.match(/^(mongodb(?:\+srv)?:\/\/[^:]+:)(.*)(@[^@/]+(?:\/.*)?)$/);
+            if (match) {
+                const password = match[2];
+                if (password.includes('@')) {
+                    finalURI = match[1] + encodeURIComponent(password) + match[3];
+                    console.log("Auto-encoded special characters in MongoDB password.");
+                }
+            }
+
+            await mongoose.connect(finalURI);
+            console.log("MongoDB (Cosmos DB) initialized successfully.");
             
-            // Create Database if not exists
-            const { database } = await client.databases.createIfNotExists({ id: "CropHealthDB" });
-            
-            // Create Container if not exists
-            const { container } = await database.containers.createIfNotExists({ 
-                id: "Predictions",
-                partitionKey: { paths: ["/plantType"] }
+            const predictionSchema = new mongoose.Schema({
+                timestamp: String,
+                filename: String,
+                topPrediction: String,
+                probability: Number,
+                plantType: String,
+                allPredictions: Array
             });
-            
-            cosmosContainer = container;
-            console.log("Cosmos DB initialized successfully.");
+
+            PredictionModel = mongoose.model('Prediction', predictionSchema);
         } catch (error) {
-            console.error("Error initializing Cosmos DB:", error.message);
+            console.error("Error initializing MongoDB:", error.message);
         }
     } else {
-        console.log("Cosmos DB credentials not found. Set COSMOS_ENDPOINT and COSMOS_KEY in .env to enable database logging.");
+        console.log("MongoDB credentials not found. Set COSMOS_ENDPOINT in .env to enable database logging.");
     }
 }
 
-// Call init for Cosmos DB
-initCosmos();
+// Call init for DB
+initDB();
 
 app.get('/', (req, res) => {
     res.send('Crop Health Detection Backend is running.');
@@ -80,13 +90,13 @@ app.post('/api/predict', upload.single('image'), async (req, res) => {
 
         const predictions = response.data.predictions;
 
-        // Optionally, save the prediction results to Cosmos DB
-        if (cosmosContainer) {
+        // Optionally, save the prediction results to DB
+        if (PredictionModel) {
             try {
                 // Find top prediction
                 const topPrediction = [...predictions].sort((a, b) => b.probability - a.probability)[0];
                 
-                await cosmosContainer.items.create({
+                const newPred = new PredictionModel({
                     timestamp: new Date().toISOString(),
                     filename: req.file.originalname,
                     topPrediction: topPrediction ? topPrediction.tagName : "Unknown",
@@ -94,9 +104,10 @@ app.post('/api/predict', upload.single('image'), async (req, res) => {
                     plantType: topPrediction ? topPrediction.tagName.split('_')[0] : "Unknown",
                     allPredictions: predictions
                 });
-                console.log("Prediction logged to Cosmos DB.");
+                await newPred.save();
+                console.log("Prediction logged to MongoDB.");
             } catch (dbError) {
-                console.error("Failed to log to Cosmos DB:", dbError.message);
+                console.error("Failed to log to MongoDB:", dbError.message);
             }
         }
 
