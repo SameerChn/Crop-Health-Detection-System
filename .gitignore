@@ -48,3 +48,7 @@ logs
 *.njsproj
 *.sln
 *.sw?
+
+# Documents
+*.pdf
+*.pptx
